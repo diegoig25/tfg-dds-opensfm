@@ -1,0 +1,74 @@
+nohup: ignoring input
+Device: cuda  |  Mode: vimeo
+Vimeo90K train: 64612 clips  |  val: 7824 clips
+Batches/epoch: train=4038  val=489
+Parámetros entrenables: 3,858,308
+selection_ratio: 0.01 (= 1.00% de píxeles seleccionados por Γ_M)
+
+── Warm-up del autoencoder (2000 pasos) ──
+  warmup [00000/2000]  loss=1.91229
+  warmup [00200/2000]  loss=2.01309
+  warmup [00400/2000]  loss=1.76370
+  warmup [00600/2000]  loss=2.02242
+  warmup [00800/2000]  loss=2.04730
+  warmup [01000/2000]  loss=2.14066
+  warmup [01200/2000]  loss=1.59731
+  warmup [01400/2000]  loss=1.44062
+  warmup [01600/2000]  loss=1.70605
+  warmup [01800/2000]  loss=1.66165
+── Warm-up completado ──
+
+
+── Entrenamiento DDS (vimeo) ──
+  total_steps = 100950
+  λ_desc = 1.0, λ_repeat = 0.5
+  WD = 0.0005, EMA = 0.999
+[TRAIN 001/25]  L=2.6790  rec=0.7961  l0=0.00054  desc=1.8780  rep=0.0086  |  s=0.663±0.392  act=0.010  spr=0.162  sat↓=0.224  sat↑=0.504  (1281s)
+[VAL   001/25]  L=2.5363  rec=0.8401  l0=0.00524  desc=1.6854  rep=0.0111  |  s=0.656±0.440  act=0.010  spr=0.147  sat↓=0.259  sat↑=0.558
+  gap_rec=+0.0440  gap_desc=-0.1926
+  ✓ Mejor EMA [curr] guardado: desc=1.6854 act=0.010
+[TRAIN 002/25]  L=2.2722  rec=0.7076  l0=0.00132  desc=1.5578  rep=0.0110  |  s=0.555±0.474  act=0.010  spr=0.145  sat↓=0.385  sat↑=0.493  (1274s)
+[VAL   002/25]  L=2.4180  rec=0.7940  l0=0.00418  desc=1.6144  rep=0.0109  |  s=0.533±0.481  act=0.010  spr=0.144  sat↓=0.419  sat↑=0.484
+  gap_rec=+0.0864  gap_desc=+0.0566
+  ✓ Mejor EMA [curr] guardado: desc=1.6144 act=0.010
+[TRAIN 003/25]  L=2.2327  rec=0.7015  l0=0.00202  desc=1.5238  rep=0.0105  |  s=0.520±0.485  act=0.010  spr=0.143  sat↓=0.439  sat↑=0.479  (1274s)
+[VAL   003/25]  L=2.3592  rec=0.7580  l0=0.00396  desc=1.5919  rep=0.0107  |  s=0.517±0.486  act=0.010  spr=0.143  sat↓=0.445  sat↑=0.480
+  gap_rec=+0.0565  gap_desc=+0.0681
+  ✓ Mejor EMA [curr] guardado: desc=1.5919 act=0.010
+[TRAIN 004/25]  L=2.2197  rec=0.6911  l0=0.00286  desc=1.5204  rep=0.0107  |  s=0.533±0.486  act=0.010  spr=0.142  sat↓=0.431  sat↑=0.498  (1274s)
+[VAL   004/25]  L=2.3625  rec=0.7456  l0=0.00403  desc=1.6074  rep=0.0109  |  s=0.535±0.487  act=0.010  spr=0.142  sat↓=0.431  sat↑=0.501
+  gap_rec=+0.0545  gap_desc=+0.0870
+[TRAIN 005/25]  L=2.2613  rec=0.6871  l0=0.00360  desc=1.5652  rep=0.0108  |  s=0.526±0.488  act=0.010  spr=0.141  sat↓=0.441  sat↑=0.494  (1274s)
+[VAL   005/25]  L=2.3997  rec=0.7408  l0=0.00394  desc=1.6494  rep=0.0112  |  s=0.523±0.488  act=0.010  spr=0.141  sat↓=0.444  sat↑=0.491
+  gap_rec=+0.0537  gap_desc=+0.0841
+[TRAIN 006/25]  L=2.2902  rec=0.6790  l0=0.00387  desc=1.6016  rep=0.0113  |  s=0.512±0.488  act=0.010  spr=0.141  sat↓=0.455  sat↑=0.479  (1274s)
+[VAL   006/25]  L=2.4305  rec=0.7359  l0=0.00384  desc=1.6848  rep=0.0119  |  s=0.507±0.488  act=0.010  spr=0.141  sat↓=0.459  sat↑=0.474
+  gap_rec=+0.0569  gap_desc=+0.0832
+[TRAIN 007/25]  L=2.2795  rec=0.6683  l0=0.00381  desc=1.6016  rep=0.0114  |  s=0.505±0.489  act=0.010  spr=0.141  sat↓=0.463  sat↑=0.474  (1274s)
+[VAL   007/25]  L=2.4212  rec=0.7266  l0=0.00381  desc=1.6849  rep=0.0118  |  s=0.506±0.489  act=0.010  spr=0.141  sat↓=0.463  sat↑=0.475
+  gap_rec=+0.0583  gap_desc=+0.0832
+[TRAIN 008/25]  L=2.2567  rec=0.6622  l0=0.00380  desc=1.5849  rep=0.0115  |  s=0.505±0.489  act=0.010  spr=0.142  sat↓=0.465  sat↑=0.474  (1274s)
+[VAL   008/25]  L=2.4041  rec=0.7224  l0=0.00378  desc=1.6719  rep=0.0120  |  s=0.502±0.489  act=0.010  spr=0.141  sat↓=0.467  sat↑=0.472
+  gap_rec=+0.0602  gap_desc=+0.0870
+[TRAIN 009/25]  L=2.2410  rec=0.6593  l0=0.00376  desc=1.5721  rep=0.0116  |  s=0.501±0.490  act=0.010  spr=0.142  sat↓=0.470  sat↑=0.471  (1274s)
+[VAL   009/25]  L=2.4008  rec=0.7238  l0=0.00376  desc=1.6673  rep=0.0120  |  s=0.501±0.490  act=0.010  spr=0.142  sat↓=0.470  sat↑=0.472
+  gap_rec=+0.0645  gap_desc=+0.0951
+[TRAIN 010/25]  L=2.2462  rec=0.6664  l0=0.00376  desc=1.5703  rep=0.0115  |  s=0.503±0.490  act=0.010  spr=0.142  sat↓=0.469  sat↑=0.475  (1274s)
+[VAL   010/25]  L=2.3994  rec=0.7280  l0=0.00377  desc=1.6616  rep=0.0120  |  s=0.504±0.490  act=0.010  spr=0.142  sat↓=0.468  sat↑=0.476
+  gap_rec=+0.0616  gap_desc=+0.0912
+[TRAIN 011/25]  L=2.2353  rec=0.6637  l0=0.00375  desc=1.5621  rep=0.0115  |  s=0.503±0.490  act=0.010  spr=0.142  sat↓=0.470  sat↑=0.476  (1274s)
+[VAL   011/25]  L=2.3941  rec=0.7285  l0=0.00376  desc=1.6559  rep=0.0120  |  s=0.503±0.490  act=0.010  spr=0.142  sat↓=0.469  sat↑=0.476
+  gap_rec=+0.0647  gap_desc=+0.0938
+[TRAIN 012/25]  L=2.2333  rec=0.6643  l0=0.00374  desc=1.5595  rep=0.0115  |  s=0.502±0.491  act=0.010  spr=0.142  sat↓=0.472  sat↑=0.476  (1274s)
+[VAL   012/25]  L=2.3923  rec=0.7283  l0=0.00375  desc=1.6542  rep=0.0119  |  s=0.503±0.491  act=0.010  spr=0.142  sat↓=0.471  sat↑=0.477
+  gap_rec=+0.0640  gap_desc=+0.0948
+[TRAIN 013/25]  L=2.2311  rec=0.6656  l0=0.00374  desc=1.5561  rep=0.0112  |  s=0.503±0.491  act=0.010  spr=0.142  sat↓=0.471  sat↑=0.478  (1273s)
+[VAL   013/25]  L=2.3965  rec=0.7322  l0=0.00374  desc=1.6547  rep=0.0117  |  s=0.503±0.491  act=0.010  spr=0.142  sat↓=0.471  sat↑=0.478
+  gap_rec=+0.0666  gap_desc=+0.0986
+
+⚠  Early stopping: 10 epochs sin mejora.
+
+Entrenamiento finalizado.
+  Último checkpoint : pesos_dds_resnet/vimeo_last.pth
+  Mejor (EMA)       : pesos_dds_resnet/vimeo_best.pth
+  Mejor val_desc    : 1.59192

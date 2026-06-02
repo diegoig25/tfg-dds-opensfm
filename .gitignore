@@ -1,0 +1,44 @@
+# Solo subir OpenSfM, ignorar el resto del proyecto
+datasets/
+gs_oficial/
+PRUEBA_INICIAL/
+workspace_lund/
+
+# Pesos de modelos (163M)
+OpenSfM/models/
+OpenSfM/pesos_dds_resnet/
+OpenSfM/pesos_dds_opensfm/
+*.pth
+*.pt
+*.ckpt
+*.npz
+
+# Binarios compilados (59M)
+OpenSfM/cmake_build/
+OpenSfM/build/
+**/*.so
+**/*.o
+**/*.pyd
+
+# Datos y resultados (90M)
+OpenSfM/data/
+**/features/
+**/matches/
+**/undistorted/
+**/colmap_export/
+**/reconstruction.json
+**/tracks.csv
+
+# Imágenes/vídeos
+*.jpg
+*.jpeg
+*.png
+*.mp4
+*.zip
+*.tar
+*.gz
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/

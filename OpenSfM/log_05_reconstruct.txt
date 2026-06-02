@@ -1,0 +1,4 @@
+2026-05-28 17:09:37,634 INFO: Starting incremental reconstruction
+2026-05-28 17:09:37,634 INFO: Loaded 0 ground control points.
+2026-05-28 17:09:37,634 INFO: Estimated reconstructability of 0 image pairs.
+2026-05-28 17:09:37,634 INFO: 0 partial reconstructions in total.

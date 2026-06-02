@@ -1,0 +1,1 @@
+bash: bin/opensfm: No such file or directory

@@ -1,0 +1,179 @@
+2026-05-28 17:07:38,757 INFO: Planning to use 53601.3 MB of RAM (out of 59557 MB RAM available) for both processing queue and parallel processing. Memory ratio is 0.9.
+2026-05-28 17:07:38,757 INFO: Scale-space expected size of a single image : 95.625 MB
+2026-05-28 17:07:38,757 INFO: Expecting to queue at most 200 images while parallel processing of 1 images.
+2026-05-28 17:07:38,757 INFO: Reading data for image 06.jpg (queue-size=0)
+2026-05-28 17:07:38,764 INFO: Finished reading images
+2026-05-28 17:07:38,764 INFO: Extracting DDS features for image 06.jpg
+2026-05-28 17:07:39,021 INFO: DDS: usando cfg del checkpoint (arquitectura del entrenamiento)
+2026-05-28 17:07:39,042 INFO: DDS model loaded from /home/tfg/tfg_diego_ig/OpenSfM/pesos_dds_resnet/vimeo_best.pth on cuda (in_channels=3, base=32, depth=4, desc_dim=128)
+2026-05-28 17:07:39,388 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:39,388 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:39,388 DEBUG: No segmentation for 06.jpg, no features masked.
+2026-05-28 17:07:39,434 INFO: Reading data for image 14.jpg (queue-size=0)
+2026-05-28 17:07:39,440 INFO: Finished reading images
+2026-05-28 17:07:39,440 INFO: Extracting DDS features for image 14.jpg
+2026-05-28 17:07:39,528 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:39,528 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:39,528 DEBUG: No segmentation for 14.jpg, no features masked.
+2026-05-28 17:07:39,571 INFO: Reading data for image 02.jpg (queue-size=0)
+2026-05-28 17:07:39,585 INFO: Finished reading images
+2026-05-28 17:07:39,586 INFO: Extracting DDS features for image 02.jpg
+2026-05-28 17:07:39,674 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:39,674 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:39,674 DEBUG: No segmentation for 02.jpg, no features masked.
+2026-05-28 17:07:39,717 INFO: Reading data for image 25.jpg (queue-size=0)
+2026-05-28 17:07:39,732 INFO: Finished reading images
+2026-05-28 17:07:39,732 INFO: Extracting DDS features for image 25.jpg
+2026-05-28 17:07:39,821 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:39,821 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:39,821 DEBUG: No segmentation for 25.jpg, no features masked.
+2026-05-28 17:07:39,866 INFO: Reading data for image 27.jpg (queue-size=0)
+2026-05-28 17:07:39,880 INFO: Finished reading images
+2026-05-28 17:07:39,881 INFO: Extracting DDS features for image 27.jpg
+2026-05-28 17:07:39,969 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:39,969 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:39,969 DEBUG: No segmentation for 27.jpg, no features masked.
+2026-05-28 17:07:40,014 INFO: Reading data for image 15.jpg (queue-size=0)
+2026-05-28 17:07:40,029 INFO: Finished reading images
+2026-05-28 17:07:40,029 INFO: Extracting DDS features for image 15.jpg
+2026-05-28 17:07:40,115 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:40,115 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:40,116 DEBUG: No segmentation for 15.jpg, no features masked.
+2026-05-28 17:07:40,159 INFO: Reading data for image 23.jpg (queue-size=0)
+2026-05-28 17:07:40,173 INFO: Finished reading images
+2026-05-28 17:07:40,173 INFO: Extracting DDS features for image 23.jpg
+2026-05-28 17:07:40,259 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:40,259 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:40,260 DEBUG: No segmentation for 23.jpg, no features masked.
+2026-05-28 17:07:40,304 INFO: Reading data for image 19.jpg (queue-size=0)
+2026-05-28 17:07:40,318 INFO: Finished reading images
+2026-05-28 17:07:40,318 INFO: Extracting DDS features for image 19.jpg
+2026-05-28 17:07:40,404 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:40,404 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:40,404 DEBUG: No segmentation for 19.jpg, no features masked.
+2026-05-28 17:07:40,448 INFO: Reading data for image 01.jpg (queue-size=0)
+2026-05-28 17:07:40,463 INFO: Finished reading images
+2026-05-28 17:07:40,463 INFO: Extracting DDS features for image 01.jpg
+2026-05-28 17:07:40,549 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:40,549 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:40,549 DEBUG: No segmentation for 01.jpg, no features masked.
+2026-05-28 17:07:40,592 INFO: Reading data for image 09.jpg (queue-size=0)
+2026-05-28 17:07:40,607 INFO: Finished reading images
+2026-05-28 17:07:40,607 INFO: Extracting DDS features for image 09.jpg
+2026-05-28 17:07:40,692 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:40,692 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:40,693 DEBUG: No segmentation for 09.jpg, no features masked.
+2026-05-28 17:07:40,736 INFO: Reading data for image 22.jpg (queue-size=0)
+2026-05-28 17:07:40,751 INFO: Finished reading images
+2026-05-28 17:07:40,751 INFO: Extracting DDS features for image 22.jpg
+2026-05-28 17:07:40,838 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:40,838 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:40,838 DEBUG: No segmentation for 22.jpg, no features masked.
+2026-05-28 17:07:40,883 INFO: Reading data for image 16.jpg (queue-size=0)
+2026-05-28 17:07:40,898 INFO: Finished reading images
+2026-05-28 17:07:40,898 INFO: Extracting DDS features for image 16.jpg
+2026-05-28 17:07:40,983 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:40,983 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:40,984 DEBUG: No segmentation for 16.jpg, no features masked.
+2026-05-28 17:07:41,028 INFO: Reading data for image 20.jpg (queue-size=0)
+2026-05-28 17:07:41,042 INFO: Finished reading images
+2026-05-28 17:07:41,043 INFO: Extracting DDS features for image 20.jpg
+2026-05-28 17:07:41,129 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:41,129 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:41,129 DEBUG: No segmentation for 20.jpg, no features masked.
+2026-05-28 17:07:41,172 INFO: Reading data for image 29.jpg (queue-size=0)
+2026-05-28 17:07:41,187 INFO: Finished reading images
+2026-05-28 17:07:41,187 INFO: Extracting DDS features for image 29.jpg
+2026-05-28 17:07:41,273 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:41,273 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:41,273 DEBUG: No segmentation for 29.jpg, no features masked.
+2026-05-28 17:07:41,319 INFO: Reading data for image 05.jpg (queue-size=0)
+2026-05-28 17:07:41,334 INFO: Finished reading images
+2026-05-28 17:07:41,334 INFO: Extracting DDS features for image 05.jpg
+2026-05-28 17:07:41,422 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:41,422 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:41,422 DEBUG: No segmentation for 05.jpg, no features masked.
+2026-05-28 17:07:41,466 INFO: Reading data for image 10.jpg (queue-size=0)
+2026-05-28 17:07:41,481 INFO: Finished reading images
+2026-05-28 17:07:41,481 INFO: Extracting DDS features for image 10.jpg
+2026-05-28 17:07:41,567 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:41,567 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:41,567 DEBUG: No segmentation for 10.jpg, no features masked.
+2026-05-28 17:07:41,611 INFO: Reading data for image 24.jpg (queue-size=0)
+2026-05-28 17:07:41,625 INFO: Finished reading images
+2026-05-28 17:07:41,625 INFO: Extracting DDS features for image 24.jpg
+2026-05-28 17:07:41,711 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:41,711 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:41,711 DEBUG: No segmentation for 24.jpg, no features masked.
+2026-05-28 17:07:41,752 INFO: Reading data for image 26.jpg (queue-size=0)
+2026-05-28 17:07:41,767 INFO: Finished reading images
+2026-05-28 17:07:41,767 INFO: Extracting DDS features for image 26.jpg
+2026-05-28 17:07:41,853 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:41,853 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:41,853 DEBUG: No segmentation for 26.jpg, no features masked.
+2026-05-28 17:07:41,899 INFO: Reading data for image 12.jpg (queue-size=0)
+2026-05-28 17:07:41,913 INFO: Finished reading images
+2026-05-28 17:07:41,913 INFO: Extracting DDS features for image 12.jpg
+2026-05-28 17:07:42,000 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:42,000 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:42,001 DEBUG: No segmentation for 12.jpg, no features masked.
+2026-05-28 17:07:42,044 INFO: Reading data for image 17.jpg (queue-size=0)
+2026-05-28 17:07:42,059 INFO: Finished reading images
+2026-05-28 17:07:42,059 INFO: Extracting DDS features for image 17.jpg
+2026-05-28 17:07:42,145 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:42,145 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:42,146 DEBUG: No segmentation for 17.jpg, no features masked.
+2026-05-28 17:07:42,189 INFO: Reading data for image 04.jpg (queue-size=0)
+2026-05-28 17:07:42,204 INFO: Finished reading images
+2026-05-28 17:07:42,204 INFO: Extracting DDS features for image 04.jpg
+2026-05-28 17:07:42,291 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:42,291 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:42,291 DEBUG: No segmentation for 04.jpg, no features masked.
+2026-05-28 17:07:42,334 INFO: Reading data for image 08.jpg (queue-size=0)
+2026-05-28 17:07:42,349 INFO: Finished reading images
+2026-05-28 17:07:42,349 INFO: Extracting DDS features for image 08.jpg
+2026-05-28 17:07:42,435 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:42,435 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:42,435 DEBUG: No segmentation for 08.jpg, no features masked.
+2026-05-28 17:07:42,480 INFO: Reading data for image 28.jpg (queue-size=0)
+2026-05-28 17:07:42,495 INFO: Finished reading images
+2026-05-28 17:07:42,495 INFO: Extracting DDS features for image 28.jpg
+2026-05-28 17:07:42,582 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:42,582 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:42,582 DEBUG: No segmentation for 28.jpg, no features masked.
+2026-05-28 17:07:42,627 INFO: Reading data for image 11.jpg (queue-size=0)
+2026-05-28 17:07:42,642 INFO: Finished reading images
+2026-05-28 17:07:42,642 INFO: Extracting DDS features for image 11.jpg
+2026-05-28 17:07:42,728 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:42,728 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:42,729 DEBUG: No segmentation for 11.jpg, no features masked.
+2026-05-28 17:07:42,773 INFO: Reading data for image 21.jpg (queue-size=0)
+2026-05-28 17:07:42,779 INFO: Finished reading images
+2026-05-28 17:07:42,779 INFO: Extracting DDS features for image 21.jpg
+2026-05-28 17:07:42,865 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:42,865 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:42,865 DEBUG: No segmentation for 21.jpg, no features masked.
+2026-05-28 17:07:42,909 INFO: Reading data for image 13.jpg (queue-size=0)
+2026-05-28 17:07:42,915 INFO: Finished reading images
+2026-05-28 17:07:42,915 INFO: Extracting DDS features for image 13.jpg
+2026-05-28 17:07:43,001 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:43,001 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:43,002 DEBUG: No segmentation for 13.jpg, no features masked.
+2026-05-28 17:07:43,046 INFO: Reading data for image 07.jpg (queue-size=0)
+2026-05-28 17:07:43,061 INFO: Finished reading images
+2026-05-28 17:07:43,061 INFO: Extracting DDS features for image 07.jpg
+2026-05-28 17:07:43,147 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:43,147 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:43,147 DEBUG: No segmentation for 07.jpg, no features masked.
+2026-05-28 17:07:43,189 INFO: Reading data for image 03.jpg (queue-size=0)
+2026-05-28 17:07:43,203 INFO: Finished reading images
+2026-05-28 17:07:43,204 INFO: Extracting DDS features for image 03.jpg
+2026-05-28 17:07:43,289 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:43,289 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:43,289 DEBUG: No segmentation for 03.jpg, no features masked.
+2026-05-28 17:07:43,334 INFO: Reading data for image 18.jpg (queue-size=0)
+2026-05-28 17:07:43,349 INFO: Finished reading images
+2026-05-28 17:07:43,349 INFO: Extracting DDS features for image 18.jpg
+2026-05-28 17:07:43,436 DEBUG: DDS+SIFT: 4000 keypoints con descriptor SIFT
+2026-05-28 17:07:43,436 DEBUG: DDS: extracted 4000 keypoints
+2026-05-28 17:07:43,436 DEBUG: No segmentation for 18.jpg, no features masked.

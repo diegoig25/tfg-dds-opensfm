@@ -1,0 +1,7 @@
+2026-05-25 10:48:42,944 DEBUG: Undistorting the reconstruction
+2026-05-25 10:48:42,950 INFO: Undistorting in parallel with 1 processes (10.5625 MB per image)
+2026-05-25 10:48:42,953 DEBUG: Undistorting image 05.jpg
+2026-05-25 10:48:42,987 DEBUG: Undistorting image 22.jpg
+2026-05-25 10:48:43,017 DEBUG: Undistorting image 06.jpg
+2026-05-25 10:48:43,048 DEBUG: Undistorting image 02.jpg
+2026-05-25 10:48:43,078 DEBUG: Undistorting image 04.jpg
