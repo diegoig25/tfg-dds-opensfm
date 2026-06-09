@@ -1,14 +1,19 @@
 """
-DISEÑO SEGÚN EL PAPER (no se desvía):
-    L = L_recon( f(τ(g̃(X)) ⊙ Γ_M ⊙ X) ) +       α·L0(g̃(X))
-                  └─ red SELECTOR ─┘     └─ red AUTOENCODER f ─┘
+DISEÑO SEGÚN EL PAPER (Eq. 2):
+    L = L_recon( f( τ(g̃(X)) ⊙ Γ_M ⊙ X ) )  +  α·L0( g̃(X) )
+                  └─── DDS (g̃) ───┘             └─ autoencoder f ─┘
 
-Dos redes separadas:
-    1. SelectorNet g̃ : produce score_logits por píxel.
-    2. AutoencoderNet f : reconstruye la imagen X enmascarada.
+Doble U-Net:   encoder (g̃)  →  capa DDS (máscara 1 canal)  →  decoder (f)
+    - encoder = g̃ : U-Net que produce el SCORE de 1 canal [B,1,H,W].
+    - decoder = f  : U-Net que reconstruye la imagen [B,3,H,W] desde X enmascarada.
+    Ambos son la MISMA arquitectura U-Net (una "dds"); solo cambia el nº de
+    canales de salida (1 para el score, in_channels para la reconstrucción).
 
-Hiperparámetros del paper Sec. 3.1: α=2e-5, β=2/3, ζ=1.1, γ=-0.1.
-Estos valores NO se modifican.
+Descriptor: NO hay descriptor aprendido. DDS DETECTA los puntos (Γ_M) y SIFT
+los DESCRIBE (apply_sift). El descriptor se calcula solo en extracción.
+
+Hiperparámetros del paper Sec. 3.1: β=2/3, ζ=1.1, γ=-0.1. (α_L0 se eleva
+respecto al paper por el dominio fotogramétrico; ver nota en DDSConfig.)
 """
 
 import math
@@ -116,37 +121,31 @@ class DDSConfig:
     base_channels:  int = 32
     depth:          int = 4
     max_channels:   int = 256
-    descriptor_dim: int = 128
+    descriptor_dim: int = 128   # SIFT es fijo a 128-D
 
     # ── SELECCIÓN ──────────────────────────────────────────
     # selection_ratio: fracción de píxeles que la máscara binaria Γ_M marca
-    # como relevantes (=1). El resto se marca como NO relevantes (=0). Estos
-    # píxeles NO contribuyen a la reconstrucción → el autoencoder debe
-    # reconstruir la imagen completa a partir SOLO de ese %.
-    #
-    # Recomendación del profesor: arrancar en 0.01 (1%) y variar buscando
-    # el óptimo, nunca por encima de 0.25 (25%).
+    # como relevantes (=1). El resto = 0 → no contribuyen a la reconstrucción.
+    # Recomendación del profesor: arrancar en 0.01 (1%), nunca por encima de 0.25.
     selection_ratio: float = 0.01
-    selection_ratio_max: float = 0.25   # cap de seguridad: nunca selecc. > 25%
+    selection_ratio_max: float = 0.25   # cap de seguridad
 
-    # max_points: solo se usa para EXTRACCIÓN de keypoints en OpenSfM
-    # (limita el nº absoluto de kp devueltos). NO afecta al entrenamiento,
-    # donde la selección se hace por % (selection_ratio).
+    # Solo para EXTRACCIÓN de keypoints en OpenSfM (nº absoluto máximo).
     max_points: int = 4000
     nms_kernel: int = 9
 
     # ── HIPERPARÁMETROS DEL PAPER (Sec. 3.1) ──────────────
-    # El paper usa alpha_l0=2e-5 para problemas con ~1000 features
-    # (MNIST, CIFAR). En imágenes 512×512 hay 262144 píxeles, así que
-    # la regularización L0 se diluye 250× y el selector no se activa.
-    # En la práctica hay que subir alpha_l0 para el dominio fotogramétrico.
-    # El resto de hiperparámetros (β, ζ, γ, α_L1) NO se modifican.
-    alpha_l0:  float = 5e-3          # paper: 2e-5 (ver nota arriba)
+    # El paper usa α_L0=2e-5 para problemas con ~1000 features (MNIST, CIFAR).
+    # En imágenes 512×512 hay 262144 píxeles → la regularización L0 se diluye
+    # ~250× y el selector no se activa. Por eso α_L0 se eleva en el dominio
+    # fotogramétrico. β, ζ, γ NO se modifican (valores del paper).
+    alpha = 0.1
+    alpha_l0:  float = 5e-3          # paper: 2e-5 (ver nota)
     beta:      float = 2.0 / 3.0
     zeta:      float = 1.1
     gamma:     float = -0.1
     alpha_l1:  float = 1e-2          # peso L1 en pérdida elástica (Eq. 9)
-    alpha:     float = 0.1
+
     # Decaimiento τ̃ (Sec. 3.2.2, Eq. 7)
     alpha_tau: float = 0.99995
 
@@ -159,72 +158,71 @@ class DDSConfig:
     default_size:  float = 8.0
     default_angle: float = 0.0
 
-    # ── Dispersión espacial (Parte B) ──────────────────────────
+    # ── Dispersión espacial (Parte B; no paper) ────────────────
     # Penaliza que los keypoints seleccionados se concentren en una zona.
-    # El detector, optimizando solo reconstrucción, tiende a agrupar los
-    # puntos (óptimo para reconstruir con pocos píxeles, pésimo para SfM).
-    # Este término empuja a repartirlos por toda la imagen.
-    # lambda_spread=0 lo desactiva (comportamiento original).
+    # lambda_spread=0 lo desactiva.
     lambda_spread: float = 0.0
 
-    # ── Anti-saturación del score (Opción 1) ───────────────────
-    # PROBLEMA detectado: el score colapsa a casi-binario, con ~47% de
-    # píxeles saturados a 1. Eso destruye el ranking fino: el modelo no
-    # distingue qué punto es MEJOR, solo "interesante / no interesante" en
-    # bloque. Sin ranking, el top-k 1% se elige entre una masa de empates
-    # → puntos no repetibles entre vistas, concentrados, descriptor pobre.
-    #
-    # Este término penaliza que la fracción de píxeles con score alto supere
-    # el objetivo (= selection_ratio). Fuerza al modelo a "gastar" score alto
-    # solo en los píxeles que de verdad va a seleccionar, obligándole a
-    # rankear finamente en lugar de saturar todo.
-    # lambda_sparsity=0 lo desactiva.
+    # ── Anti-saturación del score (Opción 1; no paper) ─────────
+    # Penaliza que la media del score supere selection_ratio → fuerza ranking
+    # fino en lugar de saturar. lambda_sparsity=0 lo desactiva.
     lambda_sparsity: float = 0.0
 
 
 # ============================================================
-# Red SELECTOR g̃ (DDS-net)
+# Red U-Net "DDS" (encoder y decoder)
 # ============================================================
 
-class SelectorNet(nn.Module):
+class AutoencoderNet(nn.Module):
     """
-    Red g̃ del paper DDS. Produce score_logits por píxel + descriptores L2-normalizados
-    para OpenSfM. Es una U-Net + dos cabezas convolucionales 1x1.
+    U-Net base usada TANTO como encoder (g̃) como decoder (f) — es la "dds".
+    Solo cambia el nº de canales de salida:
+        - encoder: out_channels=1  → mapa de score (la máscara de 1 canal).
+        - decoder: out_channels=in_channels → reconstrucción de la imagen.
+    Opera siempre sobre la IMAGEN (in_channels), no sobre features, fiel a Eq. 2.
     """
 
-    def __init__(self, cfg: DDSConfig):
+    def __init__(self, cfg: DDSConfig, out_channels: Optional[int] = None):
         super().__init__()
-        self.cfg     = cfg
+        out_ch = cfg.in_channels if out_channels is None else out_channels
         self.backbone = UNetBackbone(
             in_ch  = cfg.in_channels,
             base   = cfg.base_channels,
             depth  = cfg.depth,
             max_ch = cfg.max_channels,
         )
-        # Cabezas 1x1 fieles al paper. Sin bloques extra: el paper no los usa.
+        self.head = nn.Conv2d(self.backbone.out_ch, out_ch, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.head(self.backbone(x))
+
+
+# ============================================================
+# [NO SE USA POR EL MOMENTO] Red SELECTOR g̃ con descriptor aprendido.
+# Se conserva por si en el futuro se reintroduce un descriptor entrenable
+# en lugar de SIFT. El modelo actual NO la instancia.
+# ============================================================
+
+class SelectorNet(nn.Module):
+    """U-Net + cabeza de score (1 canal) + cabeza de descriptor (D canales)."""
+
+    def __init__(self, cfg: DDSConfig):
+        super().__init__()
+        self.cfg      = cfg
+        self.backbone = UNetBackbone(
+            in_ch  = cfg.in_channels,
+            base   = cfg.base_channels,
+            depth  = cfg.depth,
+            max_ch = cfg.max_channels,
+        )
         self.score_head = nn.Conv2d(self.backbone.out_ch, 1, 1)
         self.desc_head  = nn.Conv2d(self.backbone.out_ch, cfg.descriptor_dim, 1)
-
-        # ── INIT del score_head y desc_head ──────────────────
-        # Init Kaiming estándar. NO usamos bias=1.6 (parche dañino):
-        # saturaba τ(1.6)=1.0, lo que mata el gradiente local (clamp)
-        # y hace x_masked ≈ x → autoencoder aprende identidad trivial
-        # → selector nunca se actualiza → active=1.0 permanente.
-        #
-        # Con bias=0, score inicial mean≈0.34 std≈0.21 (dispersión natural),
-        # gradiente vivo, distribución informativa para arrancar.
         nn.init.kaiming_normal_(self.score_head.weight, nonlinearity='linear')
         nn.init.zeros_(self.score_head.bias)
         nn.init.kaiming_normal_(self.desc_head.weight, nonlinearity='linear')
         nn.init.zeros_(self.desc_head.bias)
 
-    def forward(self, x: torch.Tensor
-                ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Returns:
-            score_logits: [B, 1, H, W]   logits crudos (sin τ)
-            desc_map:     [B, D, H, W]   descriptores L2-normalizados
-        """
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         feat         = self.backbone(x)
         score_logits = self.score_head(feat)
         desc_map     = F.normalize(self.desc_head(feat), p=2, dim=1)
@@ -232,77 +230,54 @@ class SelectorNet(nn.Module):
 
 
 # ============================================================
-# Red AUTOENCODER f (Reconstructor)
-# ============================================================
-
-class AutoencoderNet(nn.Module):
-    """
-    Red f del paper. Recibe la imagen ENMASCARADA X ⊙ score ⊙ Γ_M y
-    reconstruye la imagen original X.
-
-    Importante: opera sobre la IMAGEN (3 canales RGB), no sobre features.
-    Esto es lo que el paper define en Eq. 2 y lo que hace que la
-    reconstrucción sea una tarea NO trivial: si seleccionas mal, no puedes
-    reconstruir los píxeles vecinos.
-    """
-
-    def __init__(self, cfg: DDSConfig):
-        super().__init__()
-        self.backbone   = UNetBackbone(
-            in_ch  = cfg.in_channels,
-            base   = cfg.base_channels,
-            depth  = cfg.depth,
-            max_ch = cfg.max_channels,
-        )
-        self.recon_head = nn.Conv2d(self.backbone.out_ch, cfg.in_channels, 1)
-
-    def forward(self, x_masked: torch.Tensor) -> torch.Tensor:
-        return self.recon_head(self.backbone(x_masked))
-
-
-# ============================================================
-# DDS Autoencoder (modelo completo)
+# DDS Autoencoder (modelo completo: doble U-Net)
 # ============================================================
 
 class DDSAutoencoder(nn.Module):
     """
-    Modelo completo: SelectorNet + AutoencoderNet.
-
-    El forward implementa exactamente Eq. 2 del paper:
-        x_masked     = X ⊙ τ(g̃(X)) ⊙ Γ_M
+    encoder (g̃, salida 1 canal) → capa DDS (τ, Γ_M) → decoder (f, reconstrucción).
+    Implementa Eq. 2 del paper:
+        x_masked       = τ(g̃(X)) ⊙ Γ_M ⊙ X
         reconstruction = f(x_masked)
     """
 
     def __init__(self, cfg: DDSConfig):
         super().__init__()
-        self.cfg         = cfg
-        self.encoder = AutoencoderNet(cfg)
-        self.decoder = AutoencoderNet(cfg)
+        self.cfg     = cfg
+        # encoder = g̃ : produce el SCORE de 1 canal (la máscara la calcula DDS).
+        self.encoder = AutoencoderNet(cfg, out_channels=1)
+        # decoder = f : reconstruye la imagen completa.
+        self.decoder = AutoencoderNet(cfg, out_channels=cfg.in_channels)
 
     # ------------------------------------------------------------------
     # Hard-concrete (Sec. 3.2.1 del paper)
     # ------------------------------------------------------------------
 
     def _tau(self, logits: torch.Tensor) -> torch.Tensor:
-        """τ(x) — Eq. 3 del paper. Hard-concrete determinista."""
+        """τ(x) — Eq. 3. Hard-concrete determinista."""
         s = torch.sigmoid(logits / self.cfg.beta)
         return torch.clamp(s * (self.cfg.zeta - self.cfg.gamma) + self.cfg.gamma,
                            0.0, 1.0)
 
     def _tau_u(self, logits: torch.Tensor) -> torch.Tensor:
-        """τ_u(x) — Eq. 6 del paper. Variación que aumenta masa cerca de 1."""
-        u = torch.rand_like(logits).clamp(1e-6, 1.0 - 1e-6)
-        s = torch.sigmoid((logits + self.cfg.alpha * (torch.log(u) - torch.log(1 - u))) / self.cfg.beta)
+        """
+        τ_u(x) — Eq. 6 del paper. SOLO aumenta masa cerca de 1 (nunca cerca de 0):
+            τ_u(x) = clamp( σ( (x − 2·log u)/β )·(ζ−γ) + γ , 0, 1 ),  u ~ U(0,1).
+        Como −2·log u ≥ 0 ∀u∈(0,1], el desplazamiento siempre empuja hacia 1,
+        evitando eliminaciones prematuras de features (objetivo del paper).
+        """
+        u = torch.rand_like(logits).clamp(1e-6, 1-1e-8)
+        s = torch.sigmoid((logits + alpha*(log(u) - log(1-u)))/beta)
         return torch.clamp(s * (self.cfg.zeta - self.cfg.gamma) + self.cfg.gamma,
                            0.0, 1.0)
 
     def _tau_tilde(self, logits: torch.Tensor, step: int) -> torch.Tensor:
-        """τ̃(x) — Eq. 7 del paper. Combinación con decaimiento."""
+        """τ̃(x) — Eq. 7. Combinación con decaimiento del término τ_u."""
         a = self.cfg.alpha_tau ** step
         return a * self._tau_u(logits) + (1.0 - a) * self._tau(logits)
 
     # ------------------------------------------------------------------
-    # Γ_M: máscara binaria por % (Sec. 3.1, Eq. 4)
+    # Γ_M: máscara binaria por % (Sec. 3.1, Eq. 4) — de 1 canal
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -312,48 +287,24 @@ class DDSAutoencoder(nn.Module):
         ratio_max: float = 0.25,
     ) -> torch.Tensor:
         """
-        Máscara binaria Γ_M que marca el `ratio` (fracción) de píxeles con
-        mayor score como relevantes (=1). El resto = 0.
-
-        Recomendación del profesor: ratio entre 0.01 (1%) y 0.25 (25%).
-        El cap `ratio_max=0.25` evita por error pedir >25%.
-
-        detach() porque top-k no es diferenciable: el gradiente fluye
-        únicamente a través de score, no de Γ_M (Sec. 3.1 del paper,
-        Eq. 4). El selector aprende por straight-through estimator
-        en el forward.
+        Máscara binaria Γ_M [B,1,H,W]: marca el `ratio` de píxeles de mayor
+        score = 1, resto = 0. detach() porque top-k no es diferenciable: el
+        gradiente fluye por el score, no por Γ_M (Eq. 4).
         """
         if not 0.0 < ratio <= ratio_max:
             raise ValueError(
-                f"selection_ratio={ratio} fuera de rango. "
-                f"Debe estar en (0, {ratio_max}]."
+                f"selection_ratio={ratio} fuera de rango (0, {ratio_max}]."
             )
         b, _, h, w = scores.shape
-        n_pixels   = h * w
-        k          = max(1, int(round(ratio * n_pixels)))
-        flat       = scores.detach().view(b, -1)
-        idx        = torch.topk(flat, k=k, dim=1).indices
-        mask       = torch.zeros_like(flat)
-        mask.scatter_(1, idx, 1.0)
-        return mask.view(b, 1, h, w)
-
-    @staticmethod
-    def _topk_mask(scores: torch.Tensor, k: int) -> torch.Tensor:
-        """
-        [LEGACY] Máscara binaria por nº absoluto de píxeles.
-        Solo se mantiene para la extracción OpenSfM, donde sí queremos un
-        nº fijo de keypoints. Durante el entrenamiento usar _topk_mask_by_ratio.
-        """
-        b, _, h, w = scores.shape
+        k    = max(1, int(round(ratio * h * w)))
         flat = scores.detach().view(b, -1)
-        k    = min(k, flat.shape[1])
         idx  = torch.topk(flat, k=k, dim=1).indices
         mask = torch.zeros_like(flat)
         mask.scatter_(1, idx, 1.0)
         return mask.view(b, 1, h, w)
 
     def _use_gamma_f(self, step: int, device: torch.device) -> bool:
-        """Probabilidad decayente de sustituir Γ_M por Γ_F (Eq. 8)."""
+        """Probabilidad decayente de sustituir Γ_M por Γ_F = ones (Eq. 8)."""
         p = min(self.cfg.eps_gamma_f, self.cfg.alpha_gamma_f ** step)
         return torch.rand(1, device=device).item() < p
 
@@ -367,7 +318,7 @@ class DDSAutoencoder(nn.Module):
         ).mean()
 
     # ------------------------------------------------------------------
-    # NMS espacial (solo para extracción OpenSfM, no es del paper)
+    # NMS espacial (solo extracción OpenSfM, no es del paper)
     # ------------------------------------------------------------------
 
     def nms(self, scores: torch.Tensor) -> torch.Tensor:
@@ -377,13 +328,95 @@ class DDSAutoencoder(nn.Module):
                               padding=self.cfg.nms_kernel // 2)
         return scores * (scores >= pooled - 1e-12).float()
 
+    # ------------------------------------------------------------------
+    # get_points: coordenadas de los keypoints seleccionados por Γ_M
+    # ------------------------------------------------------------------
 
-# CREAR FUNCION GET_POINTS(GAMMA_M)
-# CREAR FUNCION APPLY_SIFT(POINTS)
+    @staticmethod
+    def get_points(gamma_m: torch.Tensor) -> List[torch.Tensor]:
+        """
+        Extrae las coordenadas (x, y) de los píxeles que Γ_M marca = 1, una
+        lista por imagen del batch.
 
+        Args:  gamma_m [B,1,H,W] binaria.
+        Returns: lista de B tensores long [N_i, 2] con columnas (x, y) en
+                 coords de píxel del mapa. N_i ≈ ratio·H·W (varía por empates).
+        """
+        b = gamma_m.shape[0]
+        points: List[torch.Tensor] = []
+        for i in range(b):
+            ys, xs = torch.nonzero(gamma_m[i, 0] > 0.5, as_tuple=True)
+            points.append(torch.stack([xs, ys], dim=1))  # (x, y)
+        return points
 
     # ------------------------------------------------------------------
-    # Forward — implementación fiel de Eq. 2
+    # apply_sift: SOLO describe los puntos seleccionados (no detecta)
+    # ------------------------------------------------------------------
+
+    @torch.no_grad()
+    def apply_sift(self, points: List[torch.Tensor],
+                   x: torch.Tensor) -> List[torch.Tensor]:
+        """
+        Aplica el descriptor SIFT (128-D) a los puntos que DDS ya seleccionó.
+
+        Args:
+            points: salida de get_points (lista de B tensores [N_i,2] (x,y)).
+            x:      [B, C, H, W] imagen de entrada (C=1 o 3), float.
+        Returns:
+            Lista de B tensores [N_i, 128] L2-normalizados, ALINEADOS con
+            points[i] (fila a fila). Si SIFT no puede describir un punto
+            (p.ej. en el borde), su fila queda a cero.
+
+        Nota: SIFT no es diferenciable y corre en CPU (OpenCV). Por eso esto
+        se usa SOLO en extracción (no entra en la pérdida de entrenamiento).
+        """
+        import cv2
+        import numpy as np  # noqa: F401
+
+        b, c, h, w = x.shape
+        sift  = cv2.SIFT_create()
+        x_cpu = x.detach().float().cpu()
+        out: List[torch.Tensor] = []
+
+        for i in range(b):
+            pts = points[i]                                  # [N,2] (x,y)
+            n   = int(pts.shape[0])
+            desc = torch.zeros(n, 128, device=x.device, dtype=x.dtype)
+            if n == 0:
+                out.append(desc)
+                continue
+
+            # Imagen i → gris uint8 (SIFT exige uint8 HxW)
+            img = x_cpu[i]
+            if c == 3:
+                gray = 0.299 * img[0] + 0.587 * img[1] + 0.114 * img[2]
+            else:
+                gray = img[0]
+            gmin, gmax = gray.min(), gray.max()
+            gray = (gray - gmin) / (gmax - gmin + 1e-8)
+            gray_u8 = (gray * 255.0).clamp(0, 255).to(torch.uint8).numpy()
+
+            pts_list = pts.cpu().tolist()
+            kps = [cv2.KeyPoint(float(px), float(py), float(self.cfg.default_size))
+                   for px, py in pts_list]
+            # índice por posición para realinear (SIFT puede reordenar/descartar)
+            pos2idx = {(int(px), int(py)): j for j, (px, py) in enumerate(pts_list)}
+
+            kps_out, descs = sift.compute(gray_u8, kps)
+            if descs is not None and len(kps_out) > 0:
+                descs_t = F.normalize(
+                    torch.from_numpy(descs).to(x.device, x.dtype), p=2, dim=1)
+                for kp, d in zip(kps_out, descs_t):
+                    key = (int(round(kp.pt[0])), int(round(kp.pt[1])))
+                    j = pos2idx.get(key)
+                    if j is not None:
+                        desc[j] = d
+            out.append(desc)
+
+        return out
+
+    # ------------------------------------------------------------------
+    # Forward — Eq. 2 (entrenamiento). NO llama a SIFT (descriptor = extracción).
     # ------------------------------------------------------------------
 
     def forward(
@@ -392,61 +425,38 @@ class DDSAutoencoder(nn.Module):
         step:         int  = 0,
         training_dds: bool = True,
     ) -> Dict[str, torch.Tensor]:
-        """
-        Implementa Eq. 2 del paper:
-            x_masked     = X ⊙ Γ_M           (Γ_M es máscara BINARIA 0/1)
-            reconstruction = f(x_masked)
+        # 1. encoder g̃ → score de 1 canal (la máscara la calcula DDS)
+        score_logits = self.encoder(x)                       # [B,1,H,W]
 
-        Γ_M se calcula por porcentaje (selection_ratio): marca el `ratio` de
-        píxeles con mayor score = 1, resto = 0. El autoencoder debe
-        reconstruir la imagen ORIGINAL X a partir de SOLO ese % de píxeles.
-
-        Gradiente al selector: como Γ_M no es diferenciable (top-k),
-        usamos straight-through estimator:
-            x_masked = x * (gamma_m + score - score.detach())
-        Forward: x * gamma_m (binaria, lo que el profesor quiere).
-        Backward: el gradiente fluye via score como si x_masked = x * score.
-        Así el selector recibe señal de aprendizaje sin perder la
-        cuantización 0/1 en la pasada forward (Eq. 4 del paper).
-        """
-        # 1. SelectorNet g̃: logits + descriptores
-        score_logits = self.encoder(x)
-
-        # 2. Aplicación de τ (Sec. 3.2)
+        # 2. τ (Sec. 3.2): τ̃ en entrenamiento, τ determinista en eval
         if self.training and training_dds:
             score = self._tau_tilde(score_logits, step)
         else:
-            score = self._tau(score_logits)
+            score = self._tau(score_logits)                  # [B,1,H,W]
 
-        # 3. Γ_M: máscara binaria por % (Eq. 4 del paper)
+        # 3. Γ_M: máscara binaria por % (Eq. 4)
         gamma_m = self._topk_mask_by_ratio(
             score,
             ratio=self.cfg.selection_ratio,
             ratio_max=self.cfg.selection_ratio_max,
         )
 
-        # 4. Truco Γ_F del paper (Sec. 3.2.2, Eq. 8): durante los primeros
-        #    pasos del entrenamiento, con prob. decayente sustituimos Γ_M
-        #    por Γ_F = ones (todos los píxeles), para que el autoencoder
-        #    arranque viendo la imagen completa y el selector tenga señal
-        #    inicial. La probabilidad decae con alpha_gamma_f^step.
+        # 4. Truco Γ_F (Eq. 8): con prob. decayente usar todos los píxeles
         if self.training and training_dds and self._use_gamma_f(step, x.device):
             gamma_used = torch.ones_like(gamma_m)
         else:
             gamma_used = gamma_m
 
-        # 5. Imagen enmascarada: x * gamma_binaria (forward),
-        #    con straight-through estimator para gradiente del selector.
-        #    - Forward:   x_masked = x * gamma_used     (con gamma_used binaria)
-        #    - Backward:  ∂x_masked/∂score = x          (via el truco STE)
-        #    El término (score - score.detach()) tiene valor 0 en forward
-        #    pero gradiente igual al de score.
-        x_masked = x * gamma_used * score
+        # 5. Imagen enmascarada (Eq. 2): X ⊙ Γ_M ⊙ τ(score).
+        #    Γ_M es binaria y detached → el gradiente al selector fluye por score.
+        x_masked = x * gamma_used * score                    # [B,3,H,W]
 
-        # 6. AutoencoderNet f
+        # 6. decoder f → reconstrucción
         reconstruction = self.decoder(x_masked)
-	points = self.get_points(gamma_m)
-	desc_map = self.apply_sift(points)
+
+        # 7. Puntos seleccionados (barato; el descriptor SIFT se aplica en extracción)
+        points = self.get_points(gamma_m)
+
         return {
             "score_logits":   score_logits,
             "score":          score,
@@ -454,119 +464,71 @@ class DDSAutoencoder(nn.Module):
             "gamma_used":     gamma_used,
             "x_masked":       x_masked,
             "reconstruction": reconstruction,
-	    "desc_map": desc_map
+            "points":         points,
         }
 
     # -----------------------------------------------------------------
-    # Pérdida total
-    # ----------------------------------------------------------------- 
+    # Pérdida total: L_recon + α·L0 [+ λ_spread·L_spread] [+ λ_sparsity·L_sparsity]
+    # -----------------------------------------------------------------
     def loss(
         self,
-        outputs:                  Dict[str, torch.Tensor],
-        x:                        torch.Tensor,
-        external_descriptor_loss: Optional[torch.Tensor] = None,
-        lambda_descriptor:        float = 1.0,
-        alpha_l0_override:        Optional[float] = None,
+        outputs:           Dict[str, torch.Tensor],
+        x:                 torch.Tensor,
+        alpha_l0_override: Optional[float] = None,
     ) -> Dict[str, torch.Tensor]:
-        """
-        L = L_recon + α·L0 [+ λ_desc·L_desc] [+ λ_spread·L_spread]
-
-        L_recon  =  MSE + α_L1·L1                  (Eq. 9 del paper)
-        L0       =  α · mean(sigmoid(logits − β·log(-γ/ζ)))   (Eq. 5)
-        L_desc   =  InfoNCE externa (no paper; OpenSfM)
-        L_spread =  penalización de concentración espacial (Parte B; no paper)
-
-        alpha_l0_override permite usar un α distinto al de cfg en este step
-        (para curriculum learning: subir α progresivamente desde 0).
-        """
         recon  = outputs["reconstruction"]
         logits = outputs["score_logits"]
 
-        # Pérdida elástica de reconstrucción (Eq. 9)
+        # L_recon elástica (Eq. 9)
         loss_recon = (F.mse_loss(recon, x) +
                       self.cfg.alpha_l1 * F.l1_loss(recon, x))
 
-        # L0 regularización (Eq. 5). Si se pasa override, lo usamos
-        # (permite que el caller controle la presión L0 en cada step).
+        # L0 (Eq. 5), con posible override para curriculum
         alpha = alpha_l0_override if alpha_l0_override is not None else self.cfg.alpha_l0
         loss_l0 = alpha * self.l0_regularizer(logits)
 
         loss_total = loss_recon + loss_l0
 
-        if external_descriptor_loss is not None:
-            loss_total = loss_total + lambda_descriptor * external_descriptor_loss
-
-        # ── L_spread: penalización de concentración espacial (Parte B) ──
-        # Idea: el "centro de masa" de los scores debe estar cerca del centro
-        # de la imagen Y los scores deben tener varianza espacial alta (estar
-        # repartidos). Penalizamos:
-        #   1. Desviación del centro de masa respecto al centro (sesgo
-        #      posicional: p.ej. todo concentrado arriba).
-        #   2. Baja dispersión espacial (varianza de las posiciones pesada
-        #      por score). Queremos varianza ALTA → penalizamos su inverso.
+        # ── L_spread: dispersión espacial de los scores altos (Parte B) ──
         loss_spread = torch.tensor(0.0, device=x.device)
         if self.cfg.lambda_spread > 0:
-            score = outputs["score"]              # [B,1,H,W] en [0,1]
-            b, _, h, w = score.shape
-            # Coordenadas normalizadas [0,1]
+            score = outputs["score"]
+            _, _, h, w = score.shape
             ys = torch.linspace(0, 1, h, device=score.device).view(1, 1, h, 1)
             xs = torch.linspace(0, 1, w, device=score.device).view(1, 1, 1, w)
-
-            # CLAVE: pesamos por score^p (p alto) en vez de score. Esto
-            # enfatiza los píxeles de SCORE ALTO (los que realmente se
-            # seleccionan en el top-k), no el mapa completo. Con score^4,
-            # un píxel de score 0.9 pesa 6500× más que uno de score 0.3.
-            # Así el término mide la dispersión de los píxeles que importan
-            # y es diferenciable (a diferencia de usar gamma_m directamente).
+            # pesar por score^p enfatiza los píxeles realmente seleccionados
             p = 4.0
             s = score.clamp(min=1e-6) ** p
             ssum = s.sum(dim=(2, 3), keepdim=True) + 1e-8
-            # Centro de masa de los scores altos
             cy = (s * ys).sum(dim=(2, 3), keepdim=True) / ssum
             cx = (s * xs).sum(dim=(2, 3), keepdim=True) / ssum
-            # 1. Penalizar desviación del centro (0.5, 0.5): corrige sesgo
-            #    posicional (p.ej. todos los scores altos arriba).
             center_pen = ((cy - 0.5) ** 2 + (cx - 0.5) ** 2).mean()
-            # 2. Varianza espacial de los scores altos (queremos que sea ALTA).
             var_y = (s * (ys - cy) ** 2).sum(dim=(2, 3), keepdim=True) / ssum
             var_x = (s * (xs - cx) ** 2).sum(dim=(2, 3), keepdim=True) / ssum
             spread = (var_y + var_x).mean()
-            # Objetivo: dispersión de una distribución repartida. Una uniforme
-            # en [0,1] tiene varianza 1/12 por eje → 1/6 las dos. Apuntamos a
-            # una fracción razonable de eso (no exigimos uniformidad perfecta).
             spread_target = 0.6 * (2.0 / 12.0)
             spread_pen = torch.clamp(spread_target - spread, min=0.0)
             loss_spread = center_pen + spread_pen
             loss_total = loss_total + self.cfg.lambda_spread * loss_spread
 
-        # ── L_sparsity: anti-saturación del score (Opción 1) ───────────
-        # El score colapsa a casi-binario con ~47% saturado a 1, perdiendo
-        # el ranking fino. Forzamos que la fracción de score alto se acerque
-        # a selection_ratio: la media del score debería ser ≈ ratio (1%),
-        # no 0.5. Penalizamos el exceso de masa de score por encima del
-        # objetivo. Esto obliga al modelo a reservar score alto solo para
-        # los píxeles que va a seleccionar → induce ranking fino.
+        # ── L_sparsity: anti-saturación del score (Opción 1) ──
         loss_sparsity = torch.tensor(0.0, device=x.device)
         if self.cfg.lambda_sparsity > 0:
-            score = outputs["score"]              # [B,1,H,W] en [0,1]
-            mean_score = score.mean()             # fracción media de "actividad"
-            target = self.cfg.selection_ratio     # queremos media ≈ ratio
-            # Penalización asimétrica: solo castiga el EXCESO sobre el target
-            # (que la media sea mayor que ratio). No penaliza si ya es baja.
-            loss_sparsity = torch.clamp(mean_score - target, min=0.0)
+            score = outputs["score"]
+            mean_score = score.mean()
+            loss_sparsity = torch.clamp(mean_score - self.cfg.selection_ratio, min=0.0)
             loss_total = loss_total + self.cfg.lambda_sparsity * loss_sparsity
 
         return {
-            "loss_total":      loss_total,
-            "loss_recon":      loss_recon,
-            "loss_l0":         loss_l0,
-            "loss_descriptor": external_descriptor_loss,
-            "loss_spread":     loss_spread,
-            "loss_sparsity":   loss_sparsity,
+            "loss_total":    loss_total,
+            "loss_recon":    loss_recon,
+            "loss_l0":       loss_l0,
+            "loss_spread":   loss_spread,
+            "loss_sparsity": loss_sparsity,
         }
 
     # ------------------------------------------------------------------
-    # Extracción OpenSfM
+    # Extracción OpenSfM: DDS detecta (Γ_M) + SIFT describe (apply_sift)
     # ------------------------------------------------------------------
 
     @torch.no_grad()
@@ -574,96 +536,61 @@ class DDSAutoencoder(nn.Module):
         self,
         x:           torch.Tensor,
         original_hw: Optional[Tuple[int, int]] = None,
-    ) -> Tuple:
+    ):
         """
-        Extracción para OpenSfM. Usa máscara binaria por % (selection_ratio)
-        + NMS, y luego limita a max_points keypoints máximos.
+        Devuelve (points, descriptors) en formato OpenSfM para UNA imagen (batch=1):
+            points      [N,4] = (x, y, size, angle) en coords de la imagen original.
+            descriptors [N,128] SIFT L2-normalizados.
         """
         self.eval()
-        outputs = self.forward(x, step=0, training_dds=False)
+        if x.shape[0] != 1:
+            raise ValueError(f"extract_opensfm_features requiere batch=1, got {x.shape[0]}")
 
-        score    = outputs["score"]
-        desc_map = outputs["desc_map"]
-
-        # NMS espacial (solo para extracción, no es del paper)
+        # 1. score determinista + NMS
+        score = self._tau(self.encoder(x))                   # [1,1,H,W]
         score_nms = self.nms(score)
 
-        # Máscara binaria por % (mismo criterio que en training)
+        # 2. Γ_M por % (mismo criterio que en training)
         gamma_m = self._topk_mask_by_ratio(
             score_nms,
             ratio=self.cfg.selection_ratio,
             ratio_max=self.cfg.selection_ratio_max,
         )
-        # `selected` SOLO marca con score>0 los píxeles relevantes según γ_M.
-        # dds_to_opensfm() luego filtra por min_score y limita a max_points.
-        selected = score_nms * gamma_m
+
+        # 3. puntos + descriptores SIFT (alineados)
+        pts_xy = self.get_points(gamma_m)[0]                 # [N,2] (x,y) feat
+        desc   = self.apply_sift([pts_xy], x)[0]             # [N,128]
 
         _, _, h_feat, w_feat = x.shape
         h_orig, w_orig = original_hw if original_hw else (h_feat, w_feat)
 
-        return dds_to_opensfm(
-            scores      = selected,
-            descriptors = desc_map,
-            max_points  = self.cfg.max_points,
-            min_score   = self.cfg.min_score,
-            default_size  = self.cfg.default_size,
-            default_angle = self.cfg.default_angle,
-            feat_hw = (h_feat, w_feat),
-            orig_hw = (h_orig, w_orig),
-        )
+        if pts_xy.shape[0] == 0:
+            return (torch.empty(0, 4).numpy(),
+                    torch.empty(0, 128).numpy())
 
+        # 4. score por punto + filtro (min_score y descriptor no nulo)
+        sc = score_nms[0, 0][pts_xy[:, 1], pts_xy[:, 0]]     # [N]
+        valid = (sc > self.cfg.min_score) & (desc.abs().sum(dim=1) > 0)
+        if valid.sum() == 0:
+            best = torch.argmax(sc).view(1)
+            valid = torch.zeros_like(sc, dtype=torch.bool).index_fill_(0, best, True)
 
-# ============================================================
-# Conversión a formato OpenSfM
-# ============================================================
+        pts_xy = pts_xy[valid]
+        desc   = desc[valid]
+        sc     = sc[valid]
 
-@torch.no_grad()
-def dds_to_opensfm(
-    scores:       torch.Tensor,
-    descriptors:  torch.Tensor,
-    max_points:   int,
-    min_score:    float = 0.01,
-    default_size: float = 8.0,
-    default_angle: float = 0.0,
-    feat_hw: Tuple[int, int] = (0, 0),
-    orig_hw: Tuple[int, int] = (0, 0),
-):
-    if scores.shape[0] != 1 or descriptors.shape[0] != 1:
-        raise ValueError(
-            f"dds_to_opensfm solo soporta batch=1. "
-            f"scores={scores.shape}, descriptors={descriptors.shape}"
-        )
+        # 5. cap a max_points por score
+        if pts_xy.shape[0] > self.cfg.max_points:
+            top = torch.topk(sc, self.cfg.max_points).indices
+            pts_xy, desc = pts_xy[top], desc[top]
 
-    h_feat, w_feat = feat_hw if all(feat_hw) else scores.shape[2:]
-    h_orig, w_orig = orig_hw if all(orig_hw) else (h_feat, w_feat)
-    flat           = scores.view(-1)
+        # 6. escalar coords feat → original
+        xs = pts_xy[:, 0].float() * (w_orig / max(w_feat, 1))
+        ys = pts_xy[:, 1].float() * (h_orig / max(h_feat, 1))
+        points = torch.stack([
+            xs, ys,
+            torch.full_like(xs, self.cfg.default_size),
+            torch.full_like(xs, self.cfg.default_angle),
+        ], dim=1)
 
-    valid = torch.nonzero(flat > min_score, as_tuple=False).squeeze(1)
-    if valid.numel() == 0:
-        valid = torch.argmax(flat).view(1)
-
-    valid_scores = flat[valid]
-    k            = min(max_points, valid_scores.numel())
-    idx          = valid[torch.topk(valid_scores, k, dim=0).indices]
-
-    ys_feat = idx // w_feat
-    xs_feat = idx % w_feat
-
-    xs = xs_feat.float() * (w_orig / max(w_feat, 1))
-    ys = ys_feat.float() * (h_orig / max(h_feat, 1))
-
-    points = torch.stack([
-        xs,
-        ys,
-        torch.full_like(xs, fill_value=default_size),
-        torch.full_like(xs, fill_value=default_angle),
-    ], dim=1)
-
-    gx   = (xs_feat.float() / max(w_feat - 1, 1)) * 2.0 - 1.0
-    gy   = (ys_feat.float() / max(h_feat - 1, 1)) * 2.0 - 1.0
-    grid = torch.stack([gx, gy], dim=1).view(1, k, 1, 2)
-
-    sampled = F.grid_sample(descriptors, grid, mode="bilinear", align_corners=True)
-    desc    = F.normalize(sampled.squeeze(0).squeeze(-1).t().contiguous(), p=2, dim=1)
-
-    return points.cpu().numpy(), desc.cpu().numpy()
+        return points.cpu().numpy(), desc.cpu().numpy()

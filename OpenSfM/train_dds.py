@@ -513,15 +513,17 @@ def load_state(path: Path, model, ema, optimizer, scheduler, device) -> Tuple[in
 
 def run_warmup(model, loader, optimizer, n_steps, device, grad_clip):
     """
-    Entrena f con el régimen real pero selector congelado en init Kaiming.
-    Con bias=0, score arranca ~0.4 ± 0.2 (distribución natural y útil).
+    Calienta el decoder con el encoder congelado en init Kaiming.
+    Con bias=0, el score del encoder arranca ~0.4 ± 0.2 (distribución
+    natural y útil), y el decoder aprende a reconstruir antes de que el
+    encoder empiece a moverse.
     """
     if n_steps <= 0:
         return
-    for p in model.selector.parameters():
+    for p in model.encoder.parameters():
         p.requires_grad_(False)
     model.train()
-    print(f"\n── Warm-up del autoencoder ({n_steps} pasos) ──")
+    print(f"\n── Warm-up del decoder ({n_steps} pasos) ──")
     step = 0
     for batch in _infinite(loader):
         if step >= n_steps:
@@ -537,7 +539,7 @@ def run_warmup(model, loader, optimizer, n_steps, device, grad_clip):
         if step % 200 == 0:
             print(f"  warmup [{step:05d}/{n_steps}]  loss={loss.item():.5f}")
         step += 1
-    for p in model.selector.parameters():
+    for p in model.encoder.parameters():
         p.requires_grad_(True)
     print("── Warm-up completado ──\n")
 
@@ -611,8 +613,6 @@ def log_epoch(epoch, total, phase, m, elapsed=0.0):
           f"  L={m['loss_total']:.4f}"
           f"  rec={m['loss_recon']:.4f}"
           f"  l0={m['loss_l0']:.5f}"
-          f"  desc={m['loss_descriptor']:.4f}"
-          f"  rep={m['loss_repeat']:.4f}"
           f"  |  s={m['score_mean']:.3f}±{m['score_std']:.3f}"
           f"  act={m['active_ratio']:.3f}"
           f"  spr={m['spatial_spread']:.3f}"
@@ -634,13 +634,20 @@ def train_epoch(model, loader, optimizer, scheduler, device, global_step,
                 alpha_l0_warmup_steps: int = 0,
                 ) -> Tuple[Dict[str, float], int]:
     """
-    mode: "vimeo" usa pares temporales reales (no warp), repeatability sin θ.
-          "lund"  usa warp afín sintético sobre la misma imagen.
+    CAMINO A — entrenamiento mínimo: solo reconstrucción del detector.
 
-    Curriculum L0: durante los primeros `alpha_l0_warmup_steps` el peso de
-    la regularización L0 sube linealmente de 0 a `alpha_l0_target`.
-    Esto evita que el selector pode demasiado pronto, antes de que el
-    descriptor haya aprendido qué describir.
+    El descriptor es SIFT (no se entrena), así que NO hay InfoNCE ni
+    repeatability del descriptor. El modelo entrena únicamente el detector
+    (encoder + decoder) vía reconstrucción de la imagen con el `selection_ratio`
+    de píxeles. Pérdidas activas: reconstrucción + L0 (+ spread + sparsity
+    si sus pesos > 0).
+
+    Curriculum L0: durante los primeros `alpha_l0_warmup_steps` el peso de la
+    regularización L0 sube linealmente de 0 a `alpha_l0_target`, evitando que
+    el detector pode demasiado pronto.
+
+    Los parámetros infonce, lambda_desc, lambda_repeat, mode se mantienen en la
+    firma por compatibilidad con el resto del código, pero no se usan.
     """
     model.train()
     accum = _zero_accum()
@@ -649,17 +656,8 @@ def train_epoch(model, loader, optimizer, scheduler, device, global_step,
     for batch in loader:
         x_a = batch["anchor"].to(device, non_blocking=True)
 
-        if mode == "lund":
-            # Lund: generamos positive con warp afín
-            with torch.no_grad():
-                x_p, theta = random_affine_warp(x_a)
-        else:
-            # Vimeo90K: positive ya viene del clip
-            x_p = batch["positive"].to(device, non_blocking=True)
-            theta = None
-
         # Curriculum: alpha_l0 sube de 0 a target durante los primeros
-        # alpha_l0_warmup_steps pasos del entrenamiento (no del warm-up del AE).
+        # alpha_l0_warmup_steps pasos.
         if alpha_l0_warmup_steps > 0:
             frac = min(1.0, global_step / alpha_l0_warmup_steps)
         else:
@@ -668,29 +666,11 @@ def train_epoch(model, loader, optimizer, scheduler, device, global_step,
 
         use_amp = scaler is not None
         with torch.amp.autocast('cuda', enabled=use_amp):
+            # Forward sin descriptor (SIFT no se entrena → with_descriptor=False)
             out_a = model(x_a, step=global_step, training_dds=True)
-            out_p = model(x_p, step=global_step, training_dds=True)
-
-            # InfoNCE entre descriptores en los kp top-M del anchor
-            desc_loss = compute_descriptor_loss_temporal(
-                out_a, out_p, infonce, weight_by_score=True
-            )
-
-            # Repeatability
-            if mode == "lund":
-                rep_loss = compute_repeatability_from_warp(
-                    out_a["score"], out_p["score"], theta
-                )
-            else:
-                rep_loss = compute_repeatability_temporal(
-                    out_a["score"], out_p["score"]
-                )
 
             losses = model.loss(out_a, x_a,
-                                external_descriptor_loss=desc_loss,
-                                lambda_descriptor=lambda_desc,
                                 alpha_l0_override=alpha_l0_now)
-            losses["loss_total"] = losses["loss_total"] + lambda_repeat * rep_loss
 
         optimizer.zero_grad(set_to_none=True)
         if use_amp:
@@ -709,7 +689,7 @@ def train_epoch(model, loader, optimizer, scheduler, device, global_step,
             ema.update(model)
 
         sel = selection_metrics(out_a)
-        _accum_add(accum, losses, sel, rep_loss)
+        _accum_add(accum, losses, sel, torch.tensor(0.0))
         n += 1
         global_step += 1
 
@@ -718,41 +698,17 @@ def train_epoch(model, loader, optimizer, scheduler, device, global_step,
 
 @torch.no_grad()
 def eval_epoch(model, loader, device, infonce, lambda_desc, lambda_repeat, mode):
+    """CAMINO A — eval solo de reconstrucción + L0 (sin descriptor/repeat)."""
     model.eval()
     accum = _zero_accum()
     n = 0
 
     for batch in loader:
         x_a = batch["anchor"].to(device, non_blocking=True)
-        if mode == "lund":
-            x_p, theta = random_affine_warp(x_a)
-        else:
-            x_p = batch["positive"].to(device, non_blocking=True)
-            theta = None
-
         out_a = model(x_a, step=0, training_dds=False)
-        out_p = model(x_p, step=0, training_dds=False)
-
-        # Eval: InfoNCE SIN pesar para métrica comparable
-        desc_loss = compute_descriptor_loss_temporal(
-            out_a, out_p, infonce, weight_by_score=False
-        )
-        if mode == "lund":
-            rep_loss = compute_repeatability_from_warp(
-                out_a["score"], out_p["score"], theta
-            )
-        else:
-            rep_loss = compute_repeatability_temporal(
-                out_a["score"], out_p["score"]
-            )
-
-        losses = model.loss(out_a, x_a,
-                            external_descriptor_loss=desc_loss,
-                            lambda_descriptor=lambda_desc)
-        losses["loss_total"] = losses["loss_total"] + lambda_repeat * rep_loss
-
+        losses = model.loss(out_a, x_a)
         sel = selection_metrics(out_a)
-        _accum_add(accum, losses, sel, rep_loss)
+        _accum_add(accum, losses, sel, torch.tensor(0.0))
         n += 1
 
     return {k: v / max(n, 1) for k, v in accum.items()}
@@ -1013,36 +969,29 @@ def main() -> None:
         log_epoch(epoch, args.epochs, "TRAIN", train_m, time.time() - t0)
         log_epoch(epoch, args.epochs, "VAL  ", val_m)
         gap_rec = val_m["loss_recon"] - train_m["loss_recon"]
-        gap_desc = val_m["loss_descriptor"] - train_m["loss_descriptor"]
-        print(f"  gap_rec={gap_rec:+.4f}  gap_desc={gap_desc:+.4f}")
+        print(f"  gap_rec={gap_rec:+.4f}")
 
-        # ── Criterio de guardado: combinar descriptor + selectividad ──
-        # Queremos selección dinámica REAL. Si guardamos solo por val_desc,
-        # el "mejor" puede ser act=1.0 (no selectivo). Si guardamos solo por
-        # act bajo, perdemos calidad de descriptor. Combinamos ambos.
-        #
-        # Estrategia: pasada la fase de warmup de L0 (cuando alpha_l0 ya
-        # alcanzó su target), exigimos act ∈ [save_act_min, save_act_max].
-        # Antes de eso, solo miramos val_desc.
-        criterion = val_m["loss_descriptor"]
+        # ── Criterio de guardado (CAMINO A): reconstrucción + selectividad ──
+        # El descriptor es SIFT (no se entrena), así que el "mejor modelo" se
+        # elige por la mejor reconstrucción en validación, exigiendo además
+        # que el detector sea realmente selectivo (act en rango). Durante el
+        # curriculum L0 solo se exige act>0; después, act ∈ [min, max].
+        criterion = val_m["loss_recon"]
         act = val_m["active_ratio"]
 
         in_curriculum = (args.alpha_l0_warmup_steps > 0 and
                           global_step < args.alpha_l0_warmup_steps)
 
         if in_curriculum:
-            # Fase curriculum: el selector aún no debería estar podando.
-            # Guardamos por val_desc puro, igual que antes.
             valid = act >= 0.001
         else:
-            # Fase post-curriculum: exigimos que el selector seleccione.
             valid = args.save_act_min <= act <= args.save_act_max
 
         if criterion < best_val and valid:
             best_val = criterion
             save_best_ema(Path(args.best_output), ema, cfg, epoch)
             phase = "curr" if in_curriculum else "post"
-            print(f"  ✓ Mejor EMA [{phase}] guardado: desc={best_val:.4f} act={act:.3f}")
+            print(f"  ✓ Mejor EMA [{phase}] guardado: rec={best_val:.4f} act={act:.3f}")
             patience = args.early_stop_patience
         else:
             patience -= 1
@@ -1057,7 +1006,7 @@ def main() -> None:
     print("\nEntrenamiento finalizado.")
     print(f"  Último checkpoint : {args.output}")
     print(f"  Mejor (EMA)       : {args.best_output}")
-    print(f"  Mejor val_desc    : {best_val:.5f}")
+    print(f"  Mejor val_recon   : {best_val:.5f}")
 
 
 if __name__ == "__main__":
