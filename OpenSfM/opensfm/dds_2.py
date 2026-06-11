@@ -267,7 +267,7 @@ class DDSAutoencoder(nn.Module):
         evitando eliminaciones prematuras de features (objetivo del paper).
         """
         u = torch.rand_like(logits).clamp(1e-6, 1-1e-8)
-        s = torch.sigmoid((logits + alpha*(log(u) - log(1-u)))/beta)
+        s = torch.sigmoid((logits + self.cfg.alpha * (torch.log(u) - torch.log(1 - u))) / self.cfg.beta)
         return torch.clamp(s * (self.cfg.zeta - self.cfg.gamma) + self.cfg.gamma,
                            0.0, 1.0)
 
