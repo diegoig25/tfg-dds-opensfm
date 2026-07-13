@@ -451,8 +451,10 @@ class DDSAutoencoder(nn.Module):
         #    Γ_M es binaria y detached → el gradiente al selector fluye por score.
         x_masked = x * gamma_used * score                    # [B,3,H,W]
 
-        # 6. decoder f → reconstrucción
-        reconstruction = self.decoder(x_masked)
+        # 6. decoder f → reconstrucción, capada a [0,1] con sigmoid
+        #    (la entrada está en [0,1]; sin esto el decoder puede emitir
+        #    valores fuera de rango que el MSE castiga sin remedio)
+        reconstruction = torch.sigmoid(self.decoder(x_masked))
 
         # 7. Puntos seleccionados (barato; el descriptor SIFT se aplica en extracción)
         points = self.get_points(gamma_m)
@@ -483,11 +485,13 @@ class DDSAutoencoder(nn.Module):
         loss_recon = (F.mse_loss(recon, x) +
                       self.cfg.alpha_l1 * F.l1_loss(recon, x))
 
-        # L0 (Eq. 5), con posible override para curriculum
-        alpha = alpha_l0_override if alpha_l0_override is not None else self.cfg.alpha_l0
-        loss_l0 = alpha * self.l0_regularizer(logits)
+        # L0 ELIMINADA (indicación tutoría): la esparsidad ya la impone el
+        # top-k duro del selection_ratio, así que la l0 era redundante y su
+        # gradiente podía aplanar el mapa de score. Se reporta 0.0 para no
+        # romper el logging existente.
+        loss_l0 = torch.tensor(0.0, device=x.device)
 
-        loss_total = loss_recon + loss_l0
+        loss_total = loss_recon
 
         # ── L_spread: dispersión espacial de los scores altos (Parte B) ──
         loss_spread = torch.tensor(0.0, device=x.device)
