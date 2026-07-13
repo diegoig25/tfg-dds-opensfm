@@ -71,7 +71,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, Dataset
 
 sys.path.append(str(Path(__file__).resolve().parent / "opensfm"))
-from dds_2 import DDSAutoencoder, DDSConfig
+from dds_sift import DDSAutoencoder, DDSConfig
 
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 
@@ -529,10 +529,10 @@ def run_warmup(model, loader, optimizer, n_steps, device, grad_clip):
         if step >= n_steps:
             break
         x = batch["anchor"].to(device, non_blocking=True)
+        optimizer.zero_grad(set_to_none=True)
         out = model(x, step=0, training_dds=True)
         loss = (F.mse_loss(out["reconstruction"], x) +
                 model.cfg.alpha_l1 * F.l1_loss(out["reconstruction"], x))
-        optimizer.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
@@ -664,25 +664,18 @@ def train_epoch(model, loader, optimizer, scheduler, device, global_step,
             frac = 1.0
         alpha_l0_now = alpha_l0_target * frac
 
-        use_amp = scaler is not None
-        with torch.amp.autocast('cuda', enabled=use_amp):
-            # Forward sin descriptor (SIFT no se entrena → with_descriptor=False)
-            out_a = model(x_a, step=global_step, training_dds=True)
-
-            losses = model.loss(out_a, x_a,
-                                alpha_l0_override=alpha_l0_now)
-
         optimizer.zero_grad(set_to_none=True)
-        if use_amp:
-            scaler.scale(losses["loss_total"]).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            losses["loss_total"].backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-            optimizer.step()
+        # Forward sin descriptor (SIFT no se entrena → with_descriptor=False)
+        # Entrenamiento en float32 (sin AMP): red pequeña, no compensa la
+        # precisión mixta y evita cualquier efecto sobre el resultado.
+        out_a = model(x_a, step=global_step, training_dds=True)
+
+        losses = model.loss(out_a, x_a,
+                            alpha_l0_override=alpha_l0_now)
+
+        losses["loss_total"].backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        optimizer.step()
 
         scheduler.step()
         if ema is not None:
@@ -928,7 +921,7 @@ def main() -> None:
                       weight_decay=args.weight_decay, betas=(0.9, 0.999))
     total_steps = args.epochs * len(train_loader)
     scheduler = make_scheduler(optimizer, args.lr_warmup_steps, total_steps)
-    scaler = torch.amp.GradScaler("cuda") if args.amp else None
+    scaler = None  # AMP eliminado: entrenamiento en float32
     ema = ModelEMA(model, decay=args.ema_decay)
     infonce = InfoNCELoss(temperature=args.infonce_temp)
 
