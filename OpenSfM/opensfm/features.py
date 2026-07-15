@@ -27,8 +27,8 @@ _DDS_LOCK = threading.Lock()
 
 # Estadísticas ImageNet — DEBEN coincidir con train_dds.py.
 # Si entrenaste con otras stats, cambia estos valores.
-_DDS_IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-_DDS_IMAGENET_STD  = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+_DDS_IMAGENET_MEAN = torch.tensor([0.0, 0.0, 0.0]).view(1, 3, 1, 1)  # entrada [0,1], sin normalizar
+_DDS_IMAGENET_STD  = torch.tensor([1.0, 1.0, 1.0]).view(1, 3, 1, 1)  # entrada [0,1], sin normalizar
 
 
 class SemanticData:
@@ -493,6 +493,8 @@ def _get_dds_model(config: Dict[str, Any]) -> Tuple[DDSAutoencoder, torch.device
         import sys as _sys
         from opensfm import dds_2 as _dds_2_module
         _sys.modules.setdefault("dds_2", _dds_2_module)
+        from opensfm import dds_sift as _dds_sift_module
+        _sys.modules.setdefault("dds_sift", _dds_sift_module)
 
         ckpt = torch.load(weights_path, map_location=_DDS_DEVICE, weights_only=False)
 
@@ -529,6 +531,11 @@ def _get_dds_model(config: Dict[str, Any]) -> Tuple[DDSAutoencoder, torch.device
                 alpha_tau      = ckpt_cfg.alpha_tau,
                 alpha_gamma_f  = ckpt_cfg.alpha_gamma_f,
                 eps_gamma_f    = ckpt_cfg.eps_gamma_f,
+                # Descriptor aprendido: imprescindible para DDS-DDS. getattr con
+                # default False → checkpoints viejos (solo detector) cargan igual.
+                use_learned_descriptor = getattr(ckpt_cfg, "use_learned_descriptor", False),
+                descriptor_hidden      = getattr(ckpt_cfg, "descriptor_hidden", 128),
+                descriptor_dilation    = getattr(ckpt_cfg, "descriptor_dilation", 2),
             )
             logger.info("DDS: usando cfg del checkpoint (arquitectura del entrenamiento)")
         else:
@@ -574,11 +581,11 @@ def _get_dds_model(config: Dict[str, Any]) -> Tuple[DDSAutoencoder, torch.device
         # Si el modelo se entrenó en grayscale, usamos mean/std de un solo canal.
         global _DDS_IMAGENET_MEAN, _DDS_IMAGENET_STD
         if cfg.in_channels == 1:
-            _DDS_IMAGENET_MEAN = torch.tensor([0.5]).view(1, 1, 1, 1).to(_DDS_DEVICE)
-            _DDS_IMAGENET_STD  = torch.tensor([0.5]).view(1, 1, 1, 1).to(_DDS_DEVICE)
+            _DDS_IMAGENET_MEAN = torch.tensor([0.0]).view(1, 1, 1, 1).to(_DDS_DEVICE)  # [0,1]
+            _DDS_IMAGENET_STD  = torch.tensor([1.0]).view(1, 1, 1, 1).to(_DDS_DEVICE)  # [0,1]
         else:
-            _DDS_IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).to(_DDS_DEVICE)
-            _DDS_IMAGENET_STD  = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).to(_DDS_DEVICE)
+            _DDS_IMAGENET_MEAN = torch.tensor([0.0, 0.0, 0.0]).view(1, 3, 1, 1).to(_DDS_DEVICE)  # [0,1]
+            _DDS_IMAGENET_STD  = torch.tensor([1.0, 1.0, 1.0]).view(1, 3, 1, 1).to(_DDS_DEVICE)  # [0,1]
 
         _DDS_MODEL = model
         logger.info(

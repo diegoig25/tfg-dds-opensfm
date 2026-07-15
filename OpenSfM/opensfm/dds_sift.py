@@ -451,10 +451,11 @@ class DDSAutoencoder(nn.Module):
         #    Γ_M es binaria y detached → el gradiente al selector fluye por score.
         x_masked = x * gamma_used * score                    # [B,3,H,W]
 
-        # 6. decoder f → reconstrucción, capada a [0,1] con sigmoid
-        #    (la entrada está en [0,1]; sin esto el decoder puede emitir
-        #    valores fuera de rango que el MSE castiga sin remedio)
-        reconstruction = torch.sigmoid(self.decoder(x_masked))
+        # 6. decoder f → reconstrucción. OFFSET +1 a la entrada (indicación
+        #    tutoría): la imagen enmascarada es casi toda ceros y con score
+        #    pequeño el decoder recibía señal ínfima; el offset desplaza la
+        #    entrada para que la red no trabaje pegada a cero.
+        reconstruction = torch.sigmoid(self.decoder(x_masked + 1.0))
 
         # 7. Puntos seleccionados (barato; el descriptor SIFT se aplica en extracción)
         points = self.get_points(gamma_m)
@@ -482,13 +483,10 @@ class DDSAutoencoder(nn.Module):
         logits = outputs["score_logits"]
 
         # L_recon elástica (Eq. 9)
-        loss_recon = (F.mse_loss(recon, x) +
-                      self.cfg.alpha_l1 * F.l1_loss(recon, x))
+        # Solo MSE (indicación tutoría). Entrada/salida en [0,1] → loss ≤ 1.
+        loss_recon = F.mse_loss(recon, x)
 
-        # L0 ELIMINADA (indicación tutoría): la esparsidad ya la impone el
-        # top-k duro del selection_ratio, así que la l0 era redundante y su
-        # gradiente podía aplanar el mapa de score. Se reporta 0.0 para no
-        # romper el logging existente.
+        # L0 (Eq. 5), con posible override para curriculum
         loss_l0 = torch.tensor(0.0, device=x.device)
 
         loss_total = loss_recon

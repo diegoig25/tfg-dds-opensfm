@@ -123,6 +123,17 @@ class DDSConfig:
     max_channels:   int = 256
     descriptor_dim: int = 128   # SIFT es fijo a 128-D
 
+    # ── Descriptor DDS aprendido (Parte C) ─────────────────
+    # use_learned_descriptor=False → comportamiento ACTUAL intacto: OpenSfM
+    # describe con SIFT (apply_sift) y el modelo NO crea cabeza de descriptor.
+    # =True → se crea DescriptorHead (aprendida, detector congelado) y sustituye
+    # a SIFT en extract_opensfm_features. La cabeza solo existe si =True, de modo
+    # que los checkpoints del detector ya entrenados (sin desc_head) siguen
+    # cargando sin ningún cambio.
+    use_learned_descriptor: bool = False
+    descriptor_hidden:      int  = 128   # canales internos de la cabeza
+    descriptor_dilation:    int  = 2     # dilatación → mayor campo receptivo
+
     # ── SELECCIÓN ──────────────────────────────────────────
     # selection_ratio: fracción de píxeles que la máscara binaria Γ_M marca
     # como relevantes (=1). El resto = 0 → no contribuyen a la reconstrucción.
@@ -198,6 +209,39 @@ class AutoencoderNet(nn.Module):
 
 
 # ============================================================
+# Cabeza de descriptor aprendido (Parte C)
+# ============================================================
+
+class DescriptorHead(nn.Module):
+    """
+    Cabeza de descriptor que cuelga de las features del ENCODER (la U-Net del
+    detector) y produce un mapa de descriptores L2-normalizado [B, D, H, W].
+
+    Se entrena en una 2ª etapa con el detector CONGELADO: no mueve ni un solo
+    keypoint, solo aprende a describir los que el detector ya selecciona.
+    Convoluciones dilatadas para ampliar el campo receptivo: las features de
+    32 canales se entrenaron para RECONSTRUIR, no para EMPAREJAR; la cabeza
+    hace esa conversión y necesita ver contexto local suficiente para que cada
+    descriptor sea distintivo.
+    """
+
+    def __init__(self, in_ch: int, dim: int = 128,
+                 hidden: int = 128, dilation: int = 2):
+        super().__init__()
+        pad = dilation
+        self.net = nn.Sequential(
+            nn.Conv2d(in_ch, hidden, 3, padding=pad, dilation=dilation),
+            make_norm(hidden), nn.SiLU(inplace=True),
+            nn.Conv2d(hidden, hidden, 3, padding=pad, dilation=dilation),
+            make_norm(hidden), nn.SiLU(inplace=True),
+            nn.Conv2d(hidden, dim, 1),
+        )
+
+    def forward(self, feat: torch.Tensor) -> torch.Tensor:
+        return F.normalize(self.net(feat), p=2, dim=1)
+
+
+# ============================================================
 # [NO SE USA POR EL MOMENTO] Red SELECTOR g̃ con descriptor aprendido.
 # Se conserva por si en el futuro se reintroduce un descriptor entrenable
 # en lugar de SIFT. El modelo actual NO la instancia.
@@ -248,6 +292,59 @@ class DDSAutoencoder(nn.Module):
         self.encoder = AutoencoderNet(cfg, out_channels=1)
         # decoder = f : reconstruye la imagen completa.
         self.decoder = AutoencoderNet(cfg, out_channels=cfg.in_channels)
+        # Cabeza de descriptor (Parte C). Cuelga del backbone del ENCODER.
+        # SOLO se crea si use_learned_descriptor=True → los checkpoints del
+        # detector ya entrenados (sin desc_head) cargan sin cambios y el Camino A
+        # queda intacto. Se entrena con el detector congelado (2ª etapa).
+        if cfg.use_learned_descriptor:
+            self.desc_head: Optional[DescriptorHead] = DescriptorHead(
+                in_ch    = self.encoder.backbone.out_ch,
+                dim      = cfg.descriptor_dim,
+                hidden   = cfg.descriptor_hidden,
+                dilation = cfg.descriptor_dilation,
+            )
+        else:
+            self.desc_head = None
+
+    # ------------------------------------------------------------------
+    # Descriptor aprendido (Parte C) — detector congelado
+    # ------------------------------------------------------------------
+
+    def describe_map(self, x: torch.Tensor) -> torch.Tensor:
+        """Mapa de descriptores L2-normalizado [B, D, H, W] (requiere desc_head).
+        Usa las MISMAS features del encoder que el detector; este no se altera."""
+        if self.desc_head is None:
+            raise RuntimeError("desc_head no instanciada (use_learned_descriptor=False).")
+        return self.desc_head(self.encoder.backbone(x))
+
+    def freeze_detector(self) -> None:
+        """Congela encoder + decoder. Solo desc_head queda entrenable."""
+        for p in self.encoder.parameters():
+            p.requires_grad_(False)
+        for p in self.decoder.parameters():
+            p.requires_grad_(False)
+        self.encoder.eval()
+        self.decoder.eval()
+
+    @torch.no_grad()
+    def describe_points(self, pts_xy: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+        """
+        Describe con la cabeza DDS los puntos ya seleccionados (sustituye a SIFT
+        en extracción). pts_xy [N,2] (x,y) en coords de feature; x [1,C,H,W].
+        Devuelve [N, D] L2-normalizado, alineado fila a fila con pts_xy.
+        """
+        n = int(pts_xy.shape[0])
+        if n == 0:
+            return torch.zeros(0, self.cfg.descriptor_dim,
+                               device=x.device, dtype=x.dtype)
+        _, _, h, w = x.shape
+        desc_map = self.describe_map(x)                      # [1,D,H,W]
+        gx = (pts_xy[:, 0].float() / max(w - 1, 1)) * 2.0 - 1.0
+        gy = (pts_xy[:, 1].float() / max(h - 1, 1)) * 2.0 - 1.0
+        grid = torch.stack([gx, gy], dim=1).view(1, n, 1, 2)
+        d = F.grid_sample(desc_map, grid, mode="bilinear", align_corners=True)
+        d = d.view(self.cfg.descriptor_dim, n).t()
+        return F.normalize(d, p=2, dim=1).to(x.dtype)
 
     # ------------------------------------------------------------------
     # Hard-concrete (Sec. 3.2.1 del paper)
@@ -557,9 +654,13 @@ class DDSAutoencoder(nn.Module):
             ratio_max=self.cfg.selection_ratio_max,
         )
 
-        # 3. puntos + descriptores SIFT (alineados)
+        # 3. puntos + descriptores (alineados). DDS aprendido si está activo;
+        #    SIFT en caso contrario (comportamiento por defecto, sin cambios).
         pts_xy = self.get_points(gamma_m)[0]                 # [N,2] (x,y) feat
-        desc   = self.apply_sift([pts_xy], x)[0]             # [N,128]
+        if self.cfg.use_learned_descriptor and self.desc_head is not None:
+            desc = self.describe_points(pts_xy, x)           # [N,128] DDS
+        else:
+            desc = self.apply_sift([pts_xy], x)[0]           # [N,128] SIFT
 
         _, _, h_feat, w_feat = x.shape
         h_orig, w_orig = original_hw if original_hw else (h_feat, w_feat)
