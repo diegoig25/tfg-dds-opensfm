@@ -430,7 +430,9 @@ class DDSAutoencoder(nn.Module):
 
         # 2. τ (Sec. 3.2): τ̃ en entrenamiento, τ determinista en eval
         if self.training and training_dds:
-            score = self._tau_tilde(score_logits, step)
+            # tau_u directo (indicación tutoría): aleatoriedad constante,
+            # sin el annealing de tau_tilde que la va eliminando con el step.
+            score = self._tau_u(score_logits)
         else:
             score = self._tau(score_logits)                  # [B,1,H,W]
 
@@ -451,10 +453,7 @@ class DDSAutoencoder(nn.Module):
         #    Γ_M es binaria y detached → el gradiente al selector fluye por score.
         x_masked = x * gamma_used * score                    # [B,3,H,W]
 
-        # 6. decoder f → reconstrucción. OFFSET +1 a la entrada (indicación
-        #    tutoría): la imagen enmascarada es casi toda ceros y con score
-        #    pequeño el decoder recibía señal ínfima; el offset desplaza la
-        #    entrada para que la red no trabaje pegada a cero.
+        # 6. decoder f → reconstrucción (offset +1, indicación tutoría)
         reconstruction = torch.sigmoid(self.decoder(x_masked + 1.0))
 
         # 7. Puntos seleccionados (barato; el descriptor SIFT se aplica en extracción)
@@ -483,7 +482,6 @@ class DDSAutoencoder(nn.Module):
         logits = outputs["score_logits"]
 
         # L_recon elástica (Eq. 9)
-        # Solo MSE (indicación tutoría). Entrada/salida en [0,1] → loss ≤ 1.
         loss_recon = F.mse_loss(recon, x)
 
         # L0 (Eq. 5), con posible override para curriculum

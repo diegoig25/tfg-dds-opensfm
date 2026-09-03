@@ -233,15 +233,13 @@ def _build_tf(crop_size: int, grayscale: bool, train: bool):
             T.RandomVerticalFlip(p=0.5),
             T.RandomApply(photo, p=0.7),
             T.RandomApply([T.GaussianBlur(3, sigma=(0.1, 1.5))], p=0.2),
-            T.ToTensor(),   # entrada en [0,1]; SIN Normalize (indicación tutoría:
-                            # la entrada debe estar en [0,1] para casar con la sigmoid)
+            T.ToTensor(),
         ])
     else:
         return T.Compose([
             T.Resize(crop_size, antialias=True),
             T.CenterCrop(crop_size),
-            T.ToTensor(),   # entrada en [0,1]; SIN Normalize (indicación tutoría:
-                            # la entrada debe estar en [0,1] para casar con la sigmoid)
+            T.ToTensor(),
         ])
 
 
@@ -720,11 +718,9 @@ def eval_epoch(model, loader, device, infonce, lambda_desc, lambda_repeat, mode)
 
 def make_scheduler(optimizer, warmup_steps: int, total_steps: int,
                    min_ratio: float = 0.01) -> LambdaLR:
+    # LR CONSTANTE (indicación tutoría: sin warmup de lr y sin decay).
     def lr_lambda(step: int) -> float:
-        if step < warmup_steps:
-            return float(step + 1) / max(1, warmup_steps)
-        prog = (step - warmup_steps) / max(1, total_steps - warmup_steps)
-        return max(min_ratio, 0.5 * (1.0 + math.cos(math.pi * prog)))
+        return 1.0
     return LambdaLR(optimizer, lr_lambda)
 
 
@@ -938,9 +934,7 @@ def main() -> None:
             Path(args.resume), model, ema, optimizer, scheduler, device
         )
 
-    if epoch_start == 1:
-        run_warmup(model, train_loader, optimizer,
-                   args.warmup_steps, device, args.grad_clip)
+    # Warm-up del decoder ELIMINADO (indicación tutoría).
 
     print(f"\n── Entrenamiento DDS ({args.mode}) ──")
     print(f"  total_steps = {total_steps}")
